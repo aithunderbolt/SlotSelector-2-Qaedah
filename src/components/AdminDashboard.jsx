@@ -4,6 +4,9 @@ import * as XLSX from 'xlsx';
 import UserManagement from './UserManagement';
 import SlotManagement from './SlotManagement';
 import Settings from './Settings';
+import ClassManagement from './ClassManagement';
+import AttendanceTracking from './AttendanceTracking';
+import AttendanceAnalytics from './AttendanceAnalytics';
 import './AdminDashboard.css';
 
 const AdminDashboard = ({ onLogout, user }) => {
@@ -232,10 +235,39 @@ const AdminDashboard = ({ onLogout, user }) => {
             Slot Management
           </button>
           <button
+            className={`tab ${activeTab === 'classes' ? 'active' : ''}`}
+            onClick={() => setActiveTab('classes')}
+          >
+            Class Management
+          </button>
+          <button
+            className={`tab ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            Attendance Analytics
+          </button>
+          <button
             className={`tab ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
             Settings
+          </button>
+        </div>
+      )}
+
+      {isSlotAdmin && (
+        <div className="tabs">
+          <button
+            className={`tab ${activeTab === 'registrations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('registrations')}
+          >
+            Registrations
+          </button>
+          <button
+            className={`tab ${activeTab === 'attendance' ? 'active' : ''}`}
+            onClick={() => setActiveTab('attendance')}
+          >
+            Attendance Tracking
           </button>
         </div>
       )}
@@ -343,6 +375,18 @@ const AdminDashboard = ({ onLogout, user }) => {
 
       {activeTab === 'slots' && isSuperAdmin && (
         <SlotManagement />
+      )}
+
+      {activeTab === 'classes' && isSuperAdmin && (
+        <ClassManagement />
+      )}
+
+      {activeTab === 'analytics' && isSuperAdmin && (
+        <AttendanceAnalytics />
+      )}
+
+      {activeTab === 'attendance' && isSlotAdmin && (
+        <AttendanceTracking user={user} />
       )}
 
       {activeTab === 'settings' && isSuperAdmin && (
