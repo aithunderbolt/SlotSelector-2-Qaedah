@@ -206,6 +206,26 @@ const AdminDashboard = ({ onLogout, user }) => {
     }
   };
 
+  const handleDeleteRegistration = async (registrationId, studentName) => {
+    if (!confirm(`Are you sure you want to delete the registration for ${studentName}?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('registrations')
+        .delete()
+        .eq('id', registrationId);
+
+      if (error) throw error;
+
+      fetchData();
+    } catch (err) {
+      setError(err.message);
+      console.error('Error deleting registration:', err);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading registrations...</div>;
   }
@@ -353,12 +373,13 @@ const AdminDashboard = ({ onLogout, user }) => {
               <th>Level of Tajweed</th>
               <th>Time Slot</th>
               <th>Registered At</th>
+              {isSlotAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filteredRegistrations.length === 0 ? (
               <tr>
-                <td colSpan="8" className="no-data">No registrations found</td>
+                <td colSpan={isSlotAdmin ? "9" : "8"} className="no-data">No registrations found</td>
               </tr>
             ) : (
               filteredRegistrations.map((reg) => (
@@ -371,6 +392,17 @@ const AdminDashboard = ({ onLogout, user }) => {
                   <td>{reg.tajweed_level || '-'}</td>
                   <td><span className="slot-badge">{reg.slots?.display_name || getSlotDisplayName(reg.slot_id)}</span></td>
                   <td>{new Date(reg.created_at).toLocaleString()}</td>
+                  {isSlotAdmin && (
+                    <td>
+                      <button
+                        onClick={() => handleDeleteRegistration(reg.id, reg.name)}
+                        className="delete-btn"
+                        title="Delete registration"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
