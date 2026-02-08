@@ -24,10 +24,22 @@ const AttendanceTracking = ({ user }) => {
   const [uploadError, setUploadError] = useState(null);
   const [attachmentPreviews, setAttachmentPreviews] = useState([]);
   const [viewingImage, setViewingImage] = useState(null);
+  const [maxAttachmentSizeKB, setMaxAttachmentSizeKB] = useState(400);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+
+      // Fetch max attachment size setting
+      const { data: settingsData } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'max_attachment_size_kb')
+        .maybeSingle();
+      
+      if (settingsData?.value) {
+        setMaxAttachmentSizeKB(parseInt(settingsData.value));
+      }
 
       // Fetch classes
       const { data: classesData, error: classesError } = await supabase
@@ -126,8 +138,8 @@ const AttendanceTracking = ({ user }) => {
         setUploadError('Only image files (jpg, png, etc.) are allowed');
         return;
       }
-      if (file.size > 400 * 1024) {
-        setUploadError(`File ${file.name} exceeds 400KB limit`);
+      if (file.size > maxAttachmentSizeKB * 1024) {
+        setUploadError(`File ${file.name} exceeds ${maxAttachmentSizeKB}KB limit`);
         return;
       }
     }
@@ -531,7 +543,7 @@ const AttendanceTracking = ({ user }) => {
 
             <div className="form-group">
               <label htmlFor="attachments">
-                File Attachments * (1-3 images, max 400KB each)
+                File Attachments * (1-3 images, max {maxAttachmentSizeKB}KB each)
               </label>
               <input
                 type="file"

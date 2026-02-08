@@ -5,6 +5,7 @@ import './Settings.css';
 const Settings = () => {
   const [formTitle, setFormTitle] = useState('');
   const [maxRegistrations, setMaxRegistrations] = useState('15');
+  const [maxAttachmentSizeKB, setMaxAttachmentSizeKB] = useState('400');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -18,17 +19,18 @@ const Settings = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('settings')
-        .select('*')
-        .in('key', ['form_title', 'max_registrations_per_slot']);
+        .select('*');
 
       if (error && error.code !== 'PGRST116') throw error;
       
       const settings = data || [];
       const titleSetting = settings.find(s => s.key === 'form_title');
       const maxRegSetting = settings.find(s => s.key === 'max_registrations_per_slot');
+      const maxAttachmentSetting = settings.find(s => s.key === 'max_attachment_size_kb');
       
       setFormTitle(titleSetting?.value || 'Hifz Registration Form');
       setMaxRegistrations(maxRegSetting?.value || '15');
+      setMaxAttachmentSizeKB(maxAttachmentSetting?.value || '400');
     } catch (err) {
       console.error('Error fetching settings:', err);
       setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -56,31 +58,34 @@ const Settings = () => {
       return;
     }
 
+    const maxAttachmentSize = parseInt(maxAttachmentSizeKB);
+    if (isNaN(maxAttachmentSize) || maxAttachmentSize < 1) {
+      setMessage({ type: 'error', text: 'Maximum attachment size must be a positive number' });
+      return;
+    }
+
+    if (maxAttachmentSize > 10240) {
+      setMessage({ type: 'error', text: 'Maximum attachment size cannot exceed 10240 KB (10 MB)' });
+      return;
+    }
+
     try {
       setSaving(true);
       setMessage(null);
 
-      const { error: titleError } = await supabase
+      const settingsToSave = [
+        { key: 'form_title', value: formTitle.trim() },
+        { key: 'max_registrations_per_slot', value: maxRegNum.toString() },
+        { key: 'max_attachment_size_kb', value: maxAttachmentSize.toString() }
+      ];
+
+      const { error } = await supabase
         .from('settings')
-        .upsert({ 
-          key: 'form_title', 
-          value: formTitle.trim() 
-        }, {
+        .upsert(settingsToSave, {
           onConflict: 'key'
         });
 
-      if (titleError) throw titleError;
-
-      const { error: maxRegError } = await supabase
-        .from('settings')
-        .upsert({ 
-          key: 'max_registrations_per_slot', 
-          value: maxRegNum.toString() 
-        }, {
-          onConflict: 'key'
-        });
-
-      if (maxRegError) throw maxRegError;
+      if (error) throw error;
 
       setMessage({ type: 'success', text: 'Settings saved successfully!' });
     } catch (err) {
@@ -127,6 +132,21 @@ const Settings = () => {
             max="100"
           />
           <small>Maximum number of students that can register for each time slot (1-100)</small>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="maxAttachmentSize">Maximum Attachment Size (KB)</label>
+          <input
+            type="number"
+            id="maxAttachmentSize"
+            value={maxAttachmentSizeKB}
+            onChange={(e) => setMaxAttachmentSizeKB(e.target.value)}
+            disabled={saving}
+            placeholder="Enter maximum attachment size in KB"
+            min="1"
+            max="10240"
+          />
+          <small>Maximum file size for attendance attachments in KB (e.g., 500 for 500 KB, max 10240 KB)</small>
         </div>
 
         <button type="submit" disabled={saving} className="save-btn">
