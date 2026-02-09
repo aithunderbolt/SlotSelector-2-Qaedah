@@ -130,38 +130,25 @@ const Reports = () => {
         return;
       }
 
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const margin = 15;
-      const contentWidth = pdfWidth - (2 * margin);
+      // Create a temporary container for rendering all classes
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.width = '700px';
+      container.style.padding = '30px';
+      container.style.backgroundColor = 'white';
+      container.style.fontFamily = 'Arial, sans-serif';
+      document.body.appendChild(container);
 
-      // Process each class separately to create smaller images
-      for (let i = 0; i < classData.length; i++) {
-        const classItem = classData[i];
+      // Build HTML content with all classes
+      let htmlContent = `
+        <div style="text-align: center; margin-bottom: 25px;">
+          <h1 style="font-size: 22px; margin-bottom: 8px;">Class Report</h1>
+          <p style="font-size: 11px; color: #666;">Generated on: ${new Date().toLocaleDateString()}</p>
+        </div>
+      `;
 
-        // Create a temporary container for each class
-        const container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.left = '-9999px';
-        container.style.width = '700px';
-        container.style.padding = '30px';
-        container.style.backgroundColor = 'white';
-        container.style.fontFamily = 'Arial, sans-serif';
-        document.body.appendChild(container);
-
-        // Build HTML content for this class only
-        let htmlContent = '';
-        
-        if (i === 0) {
-          htmlContent += `
-            <div style="text-align: center; margin-bottom: 25px;">
-              <h1 style="font-size: 22px; margin-bottom: 8px;">Class Report</h1>
-              <p style="font-size: 11px; color: #666;">Generated on: ${new Date().toLocaleDateString()}</p>
-            </div>
-          `;
-        }
-
+      classData.forEach((classItem, index) => {
         htmlContent += `
           <div style="margin-bottom: 20px;">
             <h2 style="font-size: 16px; border-bottom: 2px solid #3498db; padding-bottom: 6px; margin-bottom: 12px;">${classItem.name}</h2>
@@ -179,39 +166,54 @@ const Reports = () => {
                 <strong>Total Students:</strong> ${classItem.totalStudents}
               </div>
             </div>
+            ${index < classData.length - 1 ? '<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;" />' : ''}
           </div>
         `;
+      });
 
-        container.innerHTML = htmlContent;
+      container.innerHTML = htmlContent;
 
-        // Wait for fonts to load
-        await document.fonts.ready;
+      // Wait for fonts to load
+      await document.fonts.ready;
 
-        // Convert to canvas with optimized settings
-        const canvas = await html2canvas(container, {
-          scale: 1.5, // Reduced from 2 to 1.5
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          removeContainer: true
-        });
+      // Convert to canvas with optimized settings
+      const canvas = await html2canvas(container, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        removeContainer: true
+      });
 
-        // Remove temporary container
-        document.body.removeChild(container);
+      // Remove temporary container
+      document.body.removeChild(container);
 
-        // Convert to JPEG with compression for smaller file size
-        const imgData = canvas.toDataURL('image/jpeg', 0.85); // JPEG with 85% quality
-        
-        const imgWidth = contentWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // Convert to JPEG with compression for smaller file size
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      const contentWidth = pdfWidth - (2 * margin);
+      const contentHeight = pdfHeight - (2 * margin);
+      
+      const imgWidth = contentWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-        // Add new page if not the first class
-        if (i > 0) {
-          pdf.addPage();
-        }
+      let heightLeft = imgHeight;
+      let position = margin;
 
-        // Add image to PDF
-        pdf.addImage(imgData, 'JPEG', margin, margin, imgWidth, imgHeight);
+      // Add first page
+      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+      heightLeft -= contentHeight;
+
+      // Add additional pages if content exceeds one page
+      while (heightLeft > 0) {
+        position = -(imgHeight - heightLeft) + margin;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+        heightLeft -= contentHeight;
       }
 
       // Save the PDF
