@@ -130,90 +130,114 @@ const Reports = () => {
         return;
       }
 
-      // Create a temporary container for rendering all classes
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.width = '700px';
-      container.style.padding = '30px';
-      container.style.backgroundColor = 'white';
-      container.style.fontFamily = 'Arial, sans-serif';
-      document.body.appendChild(container);
-
-      // Build HTML content with all classes
-      let htmlContent = `
-        <div style="text-align: center; margin-bottom: 25px;">
-          <h1 style="font-size: 22px; margin-bottom: 8px;">Class Report</h1>
-          <p style="font-size: 11px; color: #666;">Generated on: ${new Date().toLocaleDateString()}</p>
-        </div>
-      `;
-
-      classData.forEach((classItem, index) => {
-        htmlContent += `
-          <div style="margin-bottom: 20px;">
-            <h2 style="font-size: 16px; border-bottom: 2px solid #3498db; padding-bottom: 6px; margin-bottom: 12px;">${classItem.name}</h2>
-            <div style="font-size: 12px; line-height: 1.6;">
-              <div style="margin-bottom: 6px;">
-                <strong>Supervisor:</strong> Farheen
-              </div>
-              <div style="margin-bottom: 6px;">
-                <strong>Name of Teachers:</strong> ${classItem.teacherNames}
-              </div>
-              <div style="margin-bottom: 6px;">
-                <strong>Class Summary:</strong> ${classItem.description || 'N/A'}
-              </div>
-              <div style="margin-bottom: 6px;">
-                <strong>Total Students:</strong> ${classItem.totalStudents}
-              </div>
-            </div>
-            ${index < classData.length - 1 ? '<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;" />' : ''}
-          </div>
-        `;
-      });
-
-      container.innerHTML = htmlContent;
-
-      // Wait for fonts to load
-      await document.fonts.ready;
-
-      // Convert to canvas with optimized settings
-      const canvas = await html2canvas(container, {
-        scale: 1.5,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        removeContainer: true
-      });
-
-      // Remove temporary container
-      document.body.removeChild(container);
-
-      // Convert to JPEG with compression for smaller file size
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
-      
+      // Create PDF
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const margin = 15;
       const contentWidth = pdfWidth - (2 * margin);
       const contentHeight = pdfHeight - (2 * margin);
-      
-      const imgWidth = contentWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      let heightLeft = imgHeight;
-      let position = margin;
+      let yPosition = margin;
 
-      // Add first page
-      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-      heightLeft -= contentHeight;
+      // Helper function to create HTML element for a class section
+      const createClassElement = (classItem, isFirst = false) => {
+        const container = document.createElement('div');
+        container.style.width = '700px';
+        container.style.padding = '20px';
+        container.style.backgroundColor = 'white';
+        container.style.fontFamily = 'Arial, Tahoma, sans-serif';
+        container.style.direction = 'ltr';
 
-      // Add additional pages if content exceeds one page
-      while (heightLeft > 0) {
-        position = -(imgHeight - heightLeft) + margin;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-        heightLeft -= contentHeight;
+        let html = '';
+
+        // Add title only for first class
+        if (isFirst) {
+          html += `
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h1 style="font-size: 22px; margin-bottom: 8px;">Class Report</h1>
+              <p style="font-size: 11px; color: #666;">Generated on: ${new Date().toLocaleDateString()}</p>
+            </div>
+          `;
+        }
+
+        html += `
+          <div style="margin-bottom: 15px;">
+            <h2 style="font-size: 16px; border-bottom: 2px solid #3498db; padding-bottom: 6px; margin-bottom: 12px;">${classItem.name}</h2>
+            <div style="font-size: 12px; line-height: 1.8;">
+              <div style="margin-bottom: 8px;">
+                <strong>Supervisor:</strong> Farheen
+              </div>
+              <div style="margin-bottom: 8px;">
+                <strong>Name of Teachers:</strong> ${classItem.teacherNames}
+              </div>
+              <div style="margin-bottom: 8px; direction: auto;">
+                <strong>Class Summary:</strong> <span style="unicode-bidi: embed;">${classItem.description || 'N/A'}</span>
+              </div>
+              <div style="margin-bottom: 8px;">
+                <strong>Total Students:</strong> ${classItem.totalStudents}
+              </div>
+            </div>
+          </div>
+        `;
+
+        container.innerHTML = html;
+        return container;
+      };
+
+      // Process each class section
+      for (let i = 0; i < classData.length; i++) {
+        const classItem = classData[i];
+        const isFirst = i === 0;
+
+        // Create the element for this class
+        const element = createClassElement(classItem, isFirst);
+        element.style.position = 'absolute';
+        element.style.left = '-9999px';
+        document.body.appendChild(element);
+
+        // Wait for fonts to load
+        await document.fonts.ready;
+
+        // Convert to canvas
+        const canvas = await html2canvas(element, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff'
+        });
+
+        // Remove element
+        document.body.removeChild(element);
+
+        // Calculate image dimensions
+        const imgWidth = contentWidth;
+        const ratio = imgWidth / canvas.width;
+        const imgHeight = canvas.height * ratio;
+
+        // Check if we need a new page (leave some margin for separator)
+        if (i > 0 && yPosition + imgHeight > pdfHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+
+        // Add image to PDF
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        pdf.addImage(imgData, 'JPEG', margin, yPosition, imgWidth, imgHeight);
+
+        yPosition += imgHeight;
+
+        // Add separator line (except for last item)
+        if (i < classData.length - 1) {
+          // Check if separator and next section might need a new page
+          yPosition += 3;
+          if (yPosition + 5 < pdfHeight - margin) {
+            pdf.setLineWidth(0.3);
+            pdf.setDrawColor(200, 200, 200);
+            pdf.line(margin, yPosition, pdfWidth - margin, yPosition);
+            yPosition += 5;
+          }
+        }
       }
 
       // Save the PDF
