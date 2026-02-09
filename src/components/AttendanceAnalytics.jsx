@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import './AttendanceAnalytics.css';
 
@@ -14,51 +14,38 @@ const AttendanceAnalytics = () => {
     try {
       setLoading(true);
 
-      // Fetch classes
-      const { data: classesData, error: classesError } = await supabase
-        .from('classes')
-        .select('*')
-        .order('name', { ascending: true });
+      // Fetch all data in parallel for better performance
+      // Select only needed fields to reduce data transfer
+      const [classesResult, slotsResult, adminsResult, attendanceResult] = await Promise.all([
+        supabase
+          .from('classes')
+          .select('id, name, description, duration')
+          .order('name', { ascending: true }),
+        supabase
+          .from('slots')
+          .select('id, display_name, slot_order')
+          .order('slot_order', { ascending: true }),
+        supabase
+          .from('users')
+          .select('id, username, assigned_slot_id')
+          .eq('role', 'slot_admin'),
+        supabase
+          .from('attendance')
+          .select('id, class_id, slot_id, attendance_date, total_students, students_present, students_absent, students_on_leave')
+          .order('attendance_date', { ascending: false })
+      ]);
 
-      if (classesError) throw classesError;
-      setClasses(classesData || []);
+      // Check for errors
+      if (classesResult.error) throw classesResult.error;
+      if (slotsResult.error) throw slotsResult.error;
+      if (adminsResult.error) throw adminsResult.error;
+      if (attendanceResult.error) throw attendanceResult.error;
 
-      // Fetch slots
-      const { data: slotsData, error: slotsError } = await supabase
-        .from('slots')
-        .select('*')
-        .order('slot_order', { ascending: true });
-
-      if (slotsError) throw slotsError;
-      setSlots(slotsData || []);
-
-      // Fetch slot admins
-      const { data: adminsData, error: adminsError } = await supabase
-        .from('users')
-        .select('id, username, assigned_slot_id')
-        .eq('role', 'slot_admin');
-
-      if (adminsError) throw adminsError;
-      setSlotAdmins(adminsData || []);
-
-      // Fetch all attendance records
-      const { data: attendanceData, error: attendanceError } = await supabase
-        .from('attendance')
-        .select(`
-          *,
-          classes (
-            id,
-            name
-          ),
-          slots (
-            id,
-            display_name
-          )
-        `)
-        .order('attendance_date', { ascending: false });
-
-      if (attendanceError) throw attendanceError;
-      setAttendanceRecords(attendanceData || []);
+      // Set all state
+      setClasses(classesResult.data || []);
+      setSlots(slotsResult.data || []);
+      setSlotAdmins(adminsResult.data || []);
+      setAttendanceRecords(attendanceResult.data || []);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -67,7 +54,6 @@ const AttendanceAnalytics = () => {
       setLoading(false);
     }
   };
-
 
   useEffect(() => {
     fetchData();
@@ -88,10 +74,32 @@ const AttendanceAnalytics = () => {
     };
   }, []);
 
-  // Calculate totals per class
-  const getClassTotals = () => {
+  // Create lookup maps for O(1) access - memoized
+  const classMap = useMemo(() => {
+    const map = {};
+    classes.forEach(c => { map[c.id] = c; });
+    return map;
+  }, [classes]);
+
+  const slotMap = useMemo(() => {
+    const map = {};
+    slots.forEach(s => { map[s.id] = s; });
+    return map;
+  }, [slots]);
+
+  // Create a Set for O(1) lookup of existing attendance entries
+  const attendanceSet = useMemo(() => {
+    const set = new Set();
+    attendanceRecords.forEach(record => {
+      set.add(`${record.slot_id}|${record.class_id}`);
+    });
+    return set;
+  }, [attendanceRecords]);
+
+  // Calculate totals per class - memoized
+  const classTotals = useMemo(() => {
     const totals = {};
-    
+
     classes.forEach((classItem) => {
       totals[classItem.id] = {
         name: classItem.name,
@@ -114,73 +122,43 @@ const AttendanceAnalytics = () => {
     });
 
     return totals;
-  };
+  }, [classes, attendanceRecords]);
 
-  // Get missing entries - slot admins who have never entered attendance for a class
-  const getMissingEntries = () => {
-    const missing = [];
+  // Get missing entries grouped by admin - memoized with O(n) complexity using Set
+  const missingByAdmin = useMemo(() => {
+    const grouped = {};
 
-    // Check each slot admin
     slotAdmins.forEach((admin) => {
-      const slotName = slots.find(s => s.id === admin.assigned_slot_id)?.display_name || 'Unknown Slot';
-      
-      // Check each class
-      classes.forEach((classItem) => {
-        // Check if this slot admin has EVER entered attendance for this class
-        const hasAnyEntry = attendanceRecords.some(
-          (record) => {
-            return record.slot_id === admin.assigned_slot_id && 
-                   record.class_id === classItem.id;
-          }
-        );
+      const slotName = slotMap[admin.assigned_slot_id]?.display_name || 'Unknown Slot';
 
-        if (!hasAnyEntry) {
-          missing.push({
-            admin_username: admin.username,
-            slot_name: slotName,
-            class_name: classItem.name,
-            slot_id: admin.assigned_slot_id,
-            class_id: classItem.id
-          });
+      classes.forEach((classItem) => {
+        // O(1) lookup using Set instead of O(n) .some()
+        const key = `${admin.assigned_slot_id}|${classItem.id}`;
+        if (!attendanceSet.has(key)) {
+          const adminKey = `${admin.username} (${slotName})`;
+          if (!grouped[adminKey]) {
+            grouped[adminKey] = [];
+          }
+          grouped[adminKey].push(classItem.name);
         }
       });
     });
 
-    return missing;
-  };
-
-  // Group missing entries by slot admin
-  const getMissingByAdmin = () => {
-    const missing = getMissingEntries();
-    const grouped = {};
-
-    missing.forEach((entry) => {
-      const key = `${entry.admin_username} (${entry.slot_name})`;
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(entry.class_name);
-    });
-
     return grouped;
-  };
+  }, [slotAdmins, classes, slotMap, attendanceSet]);
 
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
     });
   };
 
   if (loading) {
     return <div className="loading">Loading analytics...</div>;
   }
-
-  const classTotals = getClassTotals();
-  const missingByAdmin = getMissingByAdmin();
-
 
   return (
     <div className="attendance-analytics">
@@ -197,7 +175,7 @@ const AttendanceAnalytics = () => {
           <div className="totals-grid">
             {classes.map((classItem) => {
               const totals = classTotals[classItem.id];
-              const attendanceRate = totals.total_students > 0 
+              const attendanceRate = totals.total_students > 0
                 ? ((totals.students_present / totals.total_students) * 100).toFixed(1)
                 : 0;
 
@@ -302,8 +280,8 @@ const AttendanceAnalytics = () => {
                   return (
                     <tr key={record.id}>
                       <td>{formatDate(record.attendance_date)}</td>
-                      <td>{record.classes?.name || 'Unknown'}</td>
-                      <td>{record.slots?.display_name || 'Unknown'}</td>
+                      <td>{classMap[record.class_id]?.name || 'Unknown'}</td>
+                      <td>{slotMap[record.slot_id]?.display_name || 'Unknown'}</td>
                       <td>{record.total_students}</td>
                       <td className="present">{record.students_present}</td>
                       <td className="absent">{record.students_absent}</td>
