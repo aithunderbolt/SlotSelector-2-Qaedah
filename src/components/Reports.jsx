@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import './Reports.css';
 
 const Reports = () => {
@@ -118,10 +119,9 @@ const Reports = () => {
     return classData;
   };
 
-  const generatePDF = () => {
+  const generatePDF = async () => {
     setGenerating(true);
     try {
-      const doc = new jsPDF();
       const classData = getClassData();
 
       if (classData.length === 0) {
@@ -130,88 +130,88 @@ const Reports = () => {
         return;
       }
 
-      let yPosition = 20;
-      const pageHeight = doc.internal.pageSize.height;
-      const margin = 20;
-      const lineHeight = 7;
+      // Create a temporary container for rendering
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.width = '800px';
+      container.style.padding = '40px';
+      container.style.backgroundColor = 'white';
+      container.style.fontFamily = 'Arial, sans-serif';
+      document.body.appendChild(container);
 
-      // Title
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Class Report', 105, yPosition, { align: 'center' });
-      yPosition += 15;
+      // Build HTML content
+      let htmlContent = `
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="font-size: 24px; margin-bottom: 10px;">Class Report</h1>
+          <p style="font-size: 12px; color: #666;">Generated on: ${new Date().toLocaleDateString()}</p>
+        </div>
+      `;
 
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Iterate through each class
       classData.forEach((classItem, index) => {
-        // Check if we need a new page
-        if (yPosition + 60 > pageHeight - margin) {
-          doc.addPage();
-          yPosition = 20;
-        }
-
-        // Class Name (Header)
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text(classItem.name, margin, yPosition);
-        yPosition += lineHeight + 2;
-
-        // Separator line
-        doc.setLineWidth(0.5);
-        doc.line(margin, yPosition, 190, yPosition);
-        yPosition += lineHeight;
-
-        // Class details
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-
-        // Supervisor
-        doc.setFont('helvetica', 'bold');
-        doc.text('Supervisor:', margin, yPosition);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Farheen', margin + 35, yPosition);
-        yPosition += lineHeight;
-
-        // Name of Teachers
-        doc.setFont('helvetica', 'bold');
-        doc.text('Name of Teachers:', margin, yPosition);
-        doc.setFont('helvetica', 'normal');
-        const teacherText = classItem.teacherNames || 'N/A';
-        const teacherLines = doc.splitTextToSize(teacherText, 140);
-        doc.text(teacherLines, margin + 35, yPosition);
-        yPosition += lineHeight * teacherLines.length;
-
-        // Class Summary
-        doc.setFont('helvetica', 'bold');
-        doc.text('Class Summary:', margin, yPosition);
-        doc.setFont('helvetica', 'normal');
-        const descriptionText = classItem.description || 'N/A';
-        const descriptionLines = doc.splitTextToSize(descriptionText, 140);
-        doc.text(descriptionLines, margin + 35, yPosition);
-        yPosition += lineHeight * descriptionLines.length;
-
-        // Total Students
-        doc.setFont('helvetica', 'bold');
-        doc.text('Total Students:', margin, yPosition);
-        doc.setFont('helvetica', 'normal');
-        doc.text(classItem.totalStudents.toString(), margin + 35, yPosition);
-        yPosition += lineHeight + 5;
-
-        // Add separator between classes (except for the last one)
-        if (index < classData.length - 1) {
-          doc.setLineWidth(0.3);
-          doc.setDrawColor(200, 200, 200);
-          doc.line(margin, yPosition, 190, yPosition);
-          yPosition += 10;
-        }
+        htmlContent += `
+          <div style="margin-bottom: 30px; page-break-inside: avoid;">
+            <h2 style="font-size: 18px; border-bottom: 2px solid #3498db; padding-bottom: 8px; margin-bottom: 15px;">${classItem.name}</h2>
+            <div style="font-size: 13px; line-height: 1.8;">
+              <div style="margin-bottom: 8px;">
+                <strong>Supervisor:</strong> Farheen
+              </div>
+              <div style="margin-bottom: 8px;">
+                <strong>Name of Teachers:</strong> ${classItem.teacherNames}
+              </div>
+              <div style="margin-bottom: 8px;">
+                <strong>Class Summary:</strong> ${classItem.description || 'N/A'}
+              </div>
+              <div style="margin-bottom: 8px;">
+                <strong>Total Students:</strong> ${classItem.totalStudents}
+              </div>
+            </div>
+            ${index < classData.length - 1 ? '<hr style="border: none; border-top: 1px solid #ddd; margin-top: 20px;" />' : ''}
+          </div>
+        `;
       });
 
+      container.innerHTML = htmlContent;
+
+      // Wait for fonts to load
+      await document.fonts.ready;
+
+      // Convert to canvas
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      // Remove temporary container
+      document.body.removeChild(container);
+
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth - 20; // 10mm margin on each side
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 10; // Top margin
+
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= (pdfHeight - 20);
+
+      // Add additional pages if needed
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight + 10;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= (pdfHeight - 20);
+      }
+
       // Save the PDF
-      doc.save(`Class_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      pdf.save(`Class_Report_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('Error generating PDF:', err);
       alert('Error generating PDF. Please try again.');
