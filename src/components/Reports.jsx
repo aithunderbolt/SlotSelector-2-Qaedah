@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -18,52 +18,46 @@ const Reports = () => {
     try {
       setLoading(true);
 
-      // Fetch classes
-      const { data: classesData, error: classesError } = await supabase
-        .from('classes')
-        .select('*')
-        .order('name', { ascending: true });
+      // Fetch all data in parallel for better performance
+      // NOTE: Do NOT fetch attachments here - they contain large base64 image data
+      // Attachments are fetched lazily only when generating PDF
+      const [classesResult, attendanceResult, usersResult, slotsResult, settingsResult] = await Promise.all([
+        supabase
+          .from('classes')
+          .select('id, name, description')
+          .order('name', { ascending: true }),
+        supabase
+          .from('attendance')
+          .select('id, class_id, slot_id, total_students'),
+        supabase
+          .from('users')
+          .select('id, name, username, assigned_slot_id')
+          .eq('role', 'slot_admin'),
+        supabase
+          .from('slots')
+          .select('id, display_name, slot_order')
+          .order('slot_order', { ascending: true }),
+        supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'supervisor_name')
+          .single()
+      ]);
 
-      if (classesError) throw classesError;
+      // Check for errors (settings error is non-fatal)
+      if (classesResult.error) throw classesResult.error;
+      if (attendanceResult.error) throw attendanceResult.error;
+      if (usersResult.error) throw usersResult.error;
+      if (slotsResult.error) throw slotsResult.error;
 
-      // Fetch all attendance records
-      const { data: attendanceData, error: attendanceError } = await supabase
-        .from('attendance')
-        .select('*');
-
-      if (attendanceError) throw attendanceError;
-
-      // Fetch users (teachers)
-      const { data: usersData, error: usersError } = await supabase
-        .from('users')
-        .select('id, name, username, assigned_slot_id')
-        .eq('role', 'slot_admin');
-
-      if (usersError) throw usersError;
-
-      // Fetch slots
-      const { data: slotsData, error: slotsError } = await supabase
-        .from('slots')
-        .select('*')
-        .order('slot_order', { ascending: true });
-
-      if (slotsError) throw slotsError;
-
-      // Fetch supervisor name from settings
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'supervisor_name')
-        .single();
-
-      if (!settingsError && settingsData) {
-        setSupervisorName(settingsData.value);
+      if (!settingsResult.error && settingsResult.data) {
+        setSupervisorName(settingsResult.data.value);
       }
 
-      setClasses(classesData || []);
-      setAttendanceRecords(attendanceData || []);
-      setUsers(usersData || []);
-      setSlots(slotsData || []);
+      setClasses(classesResult.data || []);
+      setAttendanceRecords(attendanceResult.data || []);
+      setUsers(usersResult.data || []);
+      setSlots(slotsResult.data || []);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -77,14 +71,37 @@ const Reports = () => {
     fetchData();
   }, []);
 
-  const getClassData = () => {
-    const classData = [];
+  // Create lookup map for users by assigned_slot_id - O(1) access
+  const usersBySlotId = useMemo(() => {
+    const map = {};
+    users.forEach(user => {
+      if (!map[user.assigned_slot_id]) {
+        map[user.assigned_slot_id] = [];
+      }
+      map[user.assigned_slot_id].push(user);
+    });
+    return map;
+  }, [users]);
+
+  // Group attendance records by class_id for O(1) access
+  const attendanceByClassId = useMemo(() => {
+    const map = {};
+    attendanceRecords.forEach(record => {
+      if (!map[record.class_id]) {
+        map[record.class_id] = [];
+      }
+      map[record.class_id].push(record);
+    });
+    return map;
+  }, [attendanceRecords]);
+
+  // Memoized class data computation (without attachments for fast load)
+  const classData = useMemo(() => {
+    const result = [];
 
     classes.forEach((classItem) => {
-      // Get attendance records for this class
-      const classAttendance = attendanceRecords.filter(
-        (record) => record.class_id === classItem.id
-      );
+      // O(1) lookup instead of filter
+      const classAttendance = attendanceByClassId[classItem.id] || [];
       const attendanceCount = classAttendance.length;
 
       // Only include classes with attendance >= total slots
@@ -96,35 +113,37 @@ const Reports = () => {
         );
 
         // Get unique slot IDs that have attendance for this class
-        const slotIdsWithAttendance = [
-          ...new Set(classAttendance.map((record) => record.slot_id)),
-        ];
+        const slotIdsWithAttendance = new Set(
+          classAttendance.map((record) => record.slot_id)
+        );
 
-        // Get teacher names for these slots
-        const teacherNames = users
-          .filter((user) => slotIdsWithAttendance.includes(user.assigned_slot_id))
-          .map((user) => user.name || user.username)
-          .filter((name) => name)
-          .join(', ');
+        // Get teacher names using lookup map - O(n) instead of O(n*m)
+        const teacherNames = [];
+        slotIdsWithAttendance.forEach(slotId => {
+          const slotUsers = usersBySlotId[slotId] || [];
+          slotUsers.forEach(user => {
+            const name = user.name || user.username;
+            if (name) teacherNames.push(name);
+          });
+        });
 
-        // Collect all attachments from attendance records
-        const attachments = classAttendance
-          .filter((record) => record.attachments && record.attachments.length > 0)
-          .flatMap((record) => record.attachments);
+        // Get attendance record IDs for this class (for lazy loading attachments)
+        const attendanceIds = classAttendance.map(record => record.id);
 
-        classData.push({
+        result.push({
+          id: classItem.id,
           name: classItem.name,
           description: classItem.description || '',
           totalStudents: totalStudents,
-          teacherNames: teacherNames || 'N/A',
+          teacherNames: teacherNames.join(', ') || 'N/A',
           attendanceCount: attendanceCount,
-          attachments: attachments,
+          attendanceIds: attendanceIds,
         });
       }
     });
 
     // Sort classes by name (TilawahClass1, TilawahClass2, etc.)
-    classData.sort((a, b) => {
+    result.sort((a, b) => {
       const extractNumber = (str) => {
         const match = str.match(/\d+/);
         return match ? parseInt(match[0]) : 0;
@@ -132,19 +151,48 @@ const Reports = () => {
       return extractNumber(a.name) - extractNumber(b.name);
     });
 
-    return classData;
+    return result;
+  }, [classes, attendanceByClassId, slots.length, usersBySlotId]);
+
+  // Lazy fetch attachments for specific attendance IDs
+  const fetchAttachmentsForClass = async (attendanceIds) => {
+    if (!attendanceIds || attendanceIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('attachments')
+      .in('id', attendanceIds);
+
+    if (error) {
+      console.error('Error fetching attachments:', error);
+      return [];
+    }
+
+    return (data || [])
+      .filter(record => record.attachments && record.attachments.length > 0)
+      .flatMap(record => record.attachments);
   };
 
   const generatePDF = async () => {
     setGenerating(true);
     try {
-      const classData = getClassData();
-
       if (classData.length === 0) {
         alert('No classes with complete attendance found to generate report.');
         setGenerating(false);
         return;
       }
+
+      // Fetch attachments for all classes in parallel (lazy loading)
+      const attachmentsPromises = classData.map(classItem =>
+        fetchAttachmentsForClass(classItem.attendanceIds)
+      );
+      const allAttachments = await Promise.all(attachmentsPromises);
+
+      // Create enriched class data with attachments
+      const classDataWithAttachments = classData.map((classItem, index) => ({
+        ...classItem,
+        attachments: allAttachments[index] || [],
+      }));
 
       // Create PDF
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -152,7 +200,6 @@ const Reports = () => {
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const margin = 15;
       const contentWidth = pdfWidth - (2 * margin);
-      const contentHeight = pdfHeight - (2 * margin);
 
       let yPosition = margin;
 
@@ -224,8 +271,8 @@ const Reports = () => {
       };
 
       // Process each class section
-      for (let i = 0; i < classData.length; i++) {
-        const classItem = classData[i];
+      for (let i = 0; i < classDataWithAttachments.length; i++) {
+        const classItem = classDataWithAttachments[i];
         const isFirst = i === 0;
 
         // Create the element for this class
@@ -266,7 +313,7 @@ const Reports = () => {
         yPosition += imgHeight;
 
         // Add separator line (except for last item)
-        if (i < classData.length - 1) {
+        if (i < classDataWithAttachments.length - 1) {
           // Check if separator and next section might need a new page
           yPosition += 3;
           if (yPosition + 5 < pdfHeight - margin) {
@@ -291,8 +338,6 @@ const Reports = () => {
   if (loading) {
     return <div className="loading">Loading report data...</div>;
   }
-
-  const classData = getClassData();
 
   return (
     <div className="reports-container">
@@ -345,22 +390,6 @@ const Reports = () => {
                   <span className="preview-label">Total Students:</span>
                   <span className="preview-value">{classItem.totalStudents}</span>
                 </div>
-                {classItem.attachments && classItem.attachments.length > 0 && (
-                  <div className="preview-attachments">
-                    <span className="preview-label">Attendance Images:</span>
-                    <div className="preview-images">
-                      {classItem.attachments.map((attachment, idx) => (
-                        <img
-                          key={idx}
-                          src={attachment.data}
-                          alt={attachment.name}
-                          className="preview-image"
-                          title={attachment.name}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           ))}
