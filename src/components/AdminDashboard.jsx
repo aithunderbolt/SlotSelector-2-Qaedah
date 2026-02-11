@@ -33,7 +33,7 @@ const AdminDashboard = ({ onLogout, user }) => {
         .select('value')
         .eq('key', 'form_title')
         .single();
-      
+
       setFormTitle(settingsData?.value || 'Hifz Registration Form');
 
       // Fetch slots with their max_registrations
@@ -71,7 +71,7 @@ const AdminDashboard = ({ onLogout, user }) => {
       const { data, error } = await query;
 
       if (error) throw error;
-      
+
       // For slot admins, use all registrations for counts but filtered data for table
       setRegistrations(isSlotAdmin ? { detailed: data, all: allRegistrations } : data);
       setError(null);
@@ -126,10 +126,10 @@ const AdminDashboard = ({ onLogout, user }) => {
     slots.forEach((slot) => {
       counts[slot.id] = 0;
     });
-    
+
     // Use all registrations for counts if slot admin, otherwise use regular registrations
     const dataForCounts = isSlotAdmin ? (registrations.all || []) : (Array.isArray(registrations) ? registrations : []);
-    
+
     dataForCounts.forEach((reg) => {
       if (counts[reg.slot_id] !== undefined) {
         counts[reg.slot_id]++;
@@ -142,7 +142,7 @@ const AdminDashboard = ({ onLogout, user }) => {
 
   // Use detailed registrations for slot admin, regular for super admin
   const detailedRegistrations = isSlotAdmin ? (registrations.detailed || []) : (Array.isArray(registrations) ? registrations : []);
-  
+
   const filteredRegistrations = slotFilter === 'all'
     ? detailedRegistrations
     : detailedRegistrations.filter((reg) => reg.slot_id === slotFilter);
@@ -313,7 +313,7 @@ const AdminDashboard = ({ onLogout, user }) => {
       {activeTab === 'registrations' && (
         <>
           <div className="stats-container">
-            <div 
+            <div
               className={`stat-card ${!isSlotAdmin && slotFilter === 'all' ? 'selected' : ''}`}
               onClick={() => !isSlotAdmin && setSlotFilter('all')}
               style={{ cursor: !isSlotAdmin ? 'pointer' : 'default' }}
@@ -324,8 +324,8 @@ const AdminDashboard = ({ onLogout, user }) => {
             {slots.map((slot) => {
               const maxForSlot = slot.max_registrations || 15;
               return (
-                <div 
-                  key={slot.id} 
+                <div
+                  key={slot.id}
                   className={`stat-card ${slotCounts[slot.id] >= maxForSlot ? 'full' : ''} ${!isSlotAdmin && slotFilter === slot.id ? 'selected' : ''}`}
                   onClick={() => !isSlotAdmin && setSlotFilter(slot.id)}
                   style={{ cursor: !isSlotAdmin ? 'pointer' : 'default' }}
@@ -337,84 +337,84 @@ const AdminDashboard = ({ onLogout, user }) => {
             })}
           </div>
 
-      {!isSlotAdmin && (
-        <div className="filter-section">
-          <div className="filter-controls">
-            <h3>Showing: {slotFilter === 'all' ? 'All Slots' : getSlotDisplayName(slotFilter)}</h3>
-          </div>
-          <div className="download-buttons">
-            <button onClick={handleDownloadAll} className="download-btn">
-              Download All
-            </button>
-            <button onClick={handleDownloadFiltered} className="download-btn secondary">
-              Download {slotFilter === 'all' ? 'All' : getSlotDisplayName(slotFilter)}
-            </button>
-          </div>
-        </div>
-      )}
+          {!isSlotAdmin && (
+            <div className="filter-section">
+              <div className="filter-controls">
+                <h3>Showing: {slotFilter === 'all' ? 'All Slots' : getSlotDisplayName(slotFilter)}</h3>
+              </div>
+              <div className="download-buttons">
+                <button onClick={handleDownloadAll} className="download-btn">
+                  Download All
+                </button>
+                <button onClick={handleDownloadFiltered} className="download-btn secondary">
+                  Download {slotFilter === 'all' ? 'All' : getSlotDisplayName(slotFilter)}
+                </button>
+              </div>
+            </div>
+          )}
 
-      {isSlotAdmin && (
-        <div className="filter-section">
-          <div className="filter-controls">
-            <h3>{userSlotName} Registrations</h3>
-          </div>
-          <div className="download-buttons">
-            <button onClick={handleDownloadFiltered} className="download-btn">
-              Download {userSlotName} Data
-            </button>
-          </div>
-        </div>
-      )}
+          {isSlotAdmin && (
+            <div className="filter-section">
+              <div className="filter-controls">
+                <h3>{userSlotName} Registrations</h3>
+              </div>
+              <div className="download-buttons">
+                <button onClick={handleDownloadFiltered} className="download-btn">
+                  Download {userSlotName} Data
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && <div className="error-message">{error}</div>}
 
           <div className="table-container">
-        <table className="registrations-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Father's Name</th>
-              <th>Date of Birth</th>
-              <th>Email</th>
-              <th>WhatsApp Mobile</th>
-              <th>Level of Tajweed</th>
-              <th>Time Slot</th>
-              <th>Registered At</th>
-              {isSlotAdmin && <th>Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRegistrations.length === 0 ? (
-              <tr>
-                <td colSpan={isSlotAdmin ? "9" : "8"} className="no-data">No registrations found</td>
-              </tr>
-            ) : (
-              filteredRegistrations.map((reg) => (
-                <tr key={reg.id}>
-                  <td>{reg.name}</td>
-                  <td>{reg.fathers_name || '-'}</td>
-                  <td>{formatDateToDDMMYYYY(reg.date_of_birth) || '-'}</td>
-                  <td>{reg.email}</td>
-                  <td>{reg.whatsapp_mobile}</td>
-                  <td>{reg.tajweed_level || '-'}</td>
-                  <td><span className="slot-badge">{reg.slots?.display_name || getSlotDisplayName(reg.slot_id)}</span></td>
-                  <td>{new Date(reg.created_at).toLocaleString()}</td>
-                  {isSlotAdmin && (
-                    <td>
-                      <button
-                        onClick={() => handleDeleteRegistration(reg.id, reg.name)}
-                        className="delete-btn"
-                        title="Delete registration"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  )}
+            <table className="registrations-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Father's Name</th>
+                  <th>Date of Birth</th>
+                  <th>Email</th>
+                  <th>WhatsApp Mobile</th>
+                  <th>Level of Tajweed</th>
+                  <th>Time Slot</th>
+                  <th>Registered At</th>
+                  {isSlotAdmin && <th>Actions</th>}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {filteredRegistrations.length === 0 ? (
+                  <tr>
+                    <td colSpan={isSlotAdmin ? "9" : "8"} className="no-data">No registrations found</td>
+                  </tr>
+                ) : (
+                  filteredRegistrations.map((reg) => (
+                    <tr key={reg.id}>
+                      <td>{reg.name}</td>
+                      <td>{reg.fathers_name || '-'}</td>
+                      <td>{formatDateToDDMMYYYY(reg.date_of_birth) || '-'}</td>
+                      <td>{reg.email}</td>
+                      <td>{reg.whatsapp_mobile}</td>
+                      <td>{reg.tajweed_level || '-'}</td>
+                      <td><span className="slot-badge">{reg.slots?.display_name || getSlotDisplayName(reg.slot_id)}</span></td>
+                      <td>{new Date(reg.created_at).toLocaleString()}</td>
+                      {isSlotAdmin && (
+                        <td>
+                          <button
+                            onClick={() => handleDeleteRegistration(reg.id, reg.name)}
+                            className="delete-btn"
+                            title="Delete registration"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </>
       )}
@@ -440,7 +440,7 @@ const AdminDashboard = ({ onLogout, user }) => {
       )}
 
       {activeTab === 'reports' && isSuperAdmin && (
-        <Reports />
+        <Reports isSuperAdmin={isSuperAdmin} />
       )}
 
       {activeTab === 'settings' && isSuperAdmin && (
