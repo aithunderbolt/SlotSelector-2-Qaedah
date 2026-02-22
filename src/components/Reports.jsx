@@ -158,22 +158,32 @@ const Reports = ({ isSuperAdmin = false }) => {
   }, [classes, attendanceByClassId, slots.length, usersBySlotId]);
 
   // Lazy fetch attachments for specific attendance IDs
+  // Fetches each record individually to avoid response size limits with large base64 images
   const fetchAttachmentsForClass = async (attendanceIds) => {
     if (!attendanceIds || attendanceIds.length === 0) return [];
 
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('attachments')
-      .in('id', attendanceIds);
+    const allAttachments = [];
+    for (const id of attendanceIds) {
+      try {
+        const { data, error } = await supabase
+          .from('attendance')
+          .select('attachments')
+          .eq('id', id)
+          .single();
 
-    if (error) {
-      console.error('Error fetching attachments:', error);
-      return [];
+        if (error) {
+          console.error('Error fetching attachments for id', id, ':', error);
+          continue;
+        }
+
+        if (data && data.attachments && data.attachments.length > 0) {
+          allAttachments.push(...data.attachments);
+        }
+      } catch (err) {
+        console.error('Error fetching attachment:', err);
+      }
     }
-
-    return (data || [])
-      .filter(record => record.attachments && record.attachments.length > 0)
-      .flatMap(record => record.attachments);
+    return allAttachments;
   };
 
   const generatePDF = async () => {
@@ -185,17 +195,15 @@ const Reports = ({ isSuperAdmin = false }) => {
         return;
       }
 
-      // Fetch attachments for all classes in parallel (lazy loading)
-      const attachmentsPromises = classData.map(classItem =>
-        fetchAttachmentsForClass(classItem.attendanceIds)
-      );
-      const allAttachments = await Promise.all(attachmentsPromises);
-
-      // Create enriched class data with attachments
-      const classDataWithAttachments = classData.map((classItem, index) => ({
-        ...classItem,
-        attachments: allAttachments[index] || [],
-      }));
+      // Fetch attachments for all classes sequentially to avoid rate limits
+      const classDataWithAttachments = [];
+      for (const classItem of classData) {
+        const attachments = await fetchAttachmentsForClass(classItem.attendanceIds);
+        classDataWithAttachments.push({
+          ...classItem,
+          attachments,
+        });
+      }
 
       // Create PDF
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -347,16 +355,15 @@ const Reports = ({ isSuperAdmin = false }) => {
         return;
       }
 
-      // Fetch attachments for all classes in parallel (lazy loading)
-      const attachmentsPromises = classData.map(classItem =>
-        fetchAttachmentsForClass(classItem.attendanceIds)
-      );
-      const allAttachments = await Promise.all(attachmentsPromises);
-
-      const classDataWithAttachments = classData.map((classItem, index) => ({
-        ...classItem,
-        attachments: allAttachments[index] || [],
-      }));
+      // Fetch attachments for all classes sequentially to avoid rate limits
+      const classDataWithAttachments = [];
+      for (const classItem of classData) {
+        const attachments = await fetchAttachmentsForClass(classItem.attendanceIds);
+        classDataWithAttachments.push({
+          ...classItem,
+          attachments,
+        });
+      }
 
       // Helper to convert base64 data URI to Uint8Array
       const base64ToUint8Array = (dataUri) => {
