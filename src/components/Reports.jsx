@@ -376,7 +376,7 @@ const Reports = ({ isSuperAdmin = false }) => {
         }
       }
 
-      pdf.save(`Class_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      pdf.save(`Qaedah-Report-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('Error generating PDF:', err);
       alert('Error generating PDF. Please try again.');
@@ -551,7 +551,7 @@ const Reports = ({ isSuperAdmin = false }) => {
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `Class_Report_${new Date().toISOString().split('T')[0]}.docx`);
+      saveAs(blob, `Qaedah-Report-${new Date().toISOString().split('T')[0]}.docx`);
     } catch (err) {
       console.error('Error generating Word document:', err);
       alert('Error generating Word document. Please try again.');
