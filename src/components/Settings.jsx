@@ -7,6 +7,7 @@ const Settings = () => {
   const [maxRegistrations, setMaxRegistrations] = useState('15');
   const [maxAttachmentSizeKB, setMaxAttachmentSizeKB] = useState('400');
   const [supervisorName, setSupervisorName] = useState('');
+  const [reportFileName, setReportFileName] = useState('Qaedah');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -29,11 +30,13 @@ const Settings = () => {
       const maxRegSetting = settings.find(s => s.key === 'max_registrations_per_slot');
       const maxAttachmentSetting = settings.find(s => s.key === 'max_attachment_size_kb');
       const supervisorSetting = settings.find(s => s.key === 'supervisor_name');
+      const reportFileNameSetting = settings.find(s => s.key === 'report_file_name');
 
       setFormTitle(titleSetting?.value || 'Hifz Registration Form');
       setMaxRegistrations(maxRegSetting?.value || '15');
       setMaxAttachmentSizeKB(maxAttachmentSetting?.value || '400');
       setSupervisorName(supervisorSetting?.value || '');
+      setReportFileName(reportFileNameSetting?.value || 'Qaedah');
     } catch (err) {
       console.error('Error fetching settings:', err);
       setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -80,7 +83,8 @@ const Settings = () => {
         { key: 'form_title', value: formTitle.trim() },
         { key: 'max_registrations_per_slot', value: maxRegNum.toString() },
         { key: 'max_attachment_size_kb', value: maxAttachmentSize.toString() },
-        { key: 'supervisor_name', value: supervisorName.trim() }
+        { key: 'supervisor_name', value: supervisorName.trim() },
+        { key: 'report_file_name', value: reportFileName.trim() }
       ];
 
       const { error } = await supabase
@@ -165,6 +169,20 @@ const Settings = () => {
             maxLength={100}
           />
           <small>This name will be displayed as the supervisor in the class reports</small>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="reportFileName">Report File Name</label>
+          <input
+            type="text"
+            id="reportFileName"
+            value={reportFileName}
+            onChange={(e) => setReportFileName(e.target.value)}
+            disabled={saving}
+            placeholder="Enter report file name"
+            maxLength={100}
+          />
+          <small>Downloaded reports will be named as: {reportFileName}-{new Date().toISOString().split('T')[0]}.pdf</small>
         </div>
 
         <button type="submit" disabled={saving} className="save-btn">

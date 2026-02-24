@@ -16,6 +16,7 @@ const Reports = ({ isSuperAdmin = false }) => {
   const [generating, setGenerating] = useState(false);
   const [generatingWord, setGeneratingWord] = useState(false);
   const [supervisorName, setSupervisorName] = useState('Farheen');
+  const [reportFileName, setReportFileName] = useState('Qaedah');
 
   const fetchData = async () => {
     try {
@@ -42,9 +43,8 @@ const Reports = ({ isSuperAdmin = false }) => {
           .order('slot_order', { ascending: true }),
         supabase
           .from('settings')
-          .select('value')
-          .eq('key', 'supervisor_name')
-          .single()
+          .select('key, value')
+          .in('key', ['supervisor_name', 'report_file_name'])
       ]);
 
       // Check for errors (settings error is non-fatal)
@@ -54,7 +54,11 @@ const Reports = ({ isSuperAdmin = false }) => {
       if (slotsResult.error) throw slotsResult.error;
 
       if (!settingsResult.error && settingsResult.data) {
-        setSupervisorName(settingsResult.data.value);
+        const settings = Array.isArray(settingsResult.data) ? settingsResult.data : [settingsResult.data];
+        const supervisorSetting = settings.find(s => s.key === 'supervisor_name');
+        const reportFileNameSetting = settings.find(s => s.key === 'report_file_name');
+        if (supervisorSetting) setSupervisorName(supervisorSetting.value);
+        if (reportFileNameSetting) setReportFileName(reportFileNameSetting.value);
       }
 
       setClasses(classesResult.data || []);
@@ -376,7 +380,7 @@ const Reports = ({ isSuperAdmin = false }) => {
         }
       }
 
-      pdf.save(`Qaedah-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+      pdf.save(`${reportFileName}-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('Error generating PDF:', err);
       alert('Error generating PDF. Please try again.');
@@ -551,7 +555,7 @@ const Reports = ({ isSuperAdmin = false }) => {
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `Qaedah-Report-${new Date().toISOString().split('T')[0]}.docx`);
+      saveAs(blob, `${reportFileName}-${new Date().toISOString().split('T')[0]}.docx`);
     } catch (err) {
       console.error('Error generating Word document:', err);
       alert('Error generating Word document. Please try again.');
