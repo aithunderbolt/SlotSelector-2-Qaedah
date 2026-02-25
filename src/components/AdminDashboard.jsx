@@ -8,6 +8,7 @@ import ClassManagement from './ClassManagement';
 import AttendanceTracking from './AttendanceTracking';
 import AttendanceAnalytics from './AttendanceAnalytics';
 import Reports from './Reports';
+import Reports2 from './Reports2';
 import './AdminDashboard.css';
 
 const AdminDashboard = ({ onLogout, user }) => {
@@ -285,6 +286,12 @@ const AdminDashboard = ({ onLogout, user }) => {
             Reports
           </button>
           <button
+            className={`tab ${activeTab === 'reports2' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reports2')}
+          >
+            Reports 2
+          </button>
+          <button
             className={`tab ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
@@ -441,6 +448,10 @@ const AdminDashboard = ({ onLogout, user }) => {
 
       {activeTab === 'reports' && isSuperAdmin && (
         <Reports isSuperAdmin={isSuperAdmin} />
+      )}
+
+      {activeTab === 'reports2' && isSuperAdmin && (
+        <Reports2 isSuperAdmin={isSuperAdmin} />
       )}
 
       {activeTab === 'settings' && isSuperAdmin && (
